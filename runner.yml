@@ -1,0 +1,45 @@
+# runner
+
+- name: Create directories for GitLab Runner
+  ansible.builtin.file:
+    path: /etc/gitlab/runner
+    mode: 0777
+    owner: "{{ lookup('ansible.builtin.env', 'USER') }}"
+    state: directory
+  become: true
+
+- name: Create runner run command
+  ansible.builtin.set_fact:
+    runner_launch_command: >-
+      docker run
+      --detach
+      --name gitlab-runner
+      --restart {{ 'always' if restart_always else 'no' }}
+      --volume /etc/gitlab/runner:/etc/gitlab-runner
+      --volume /var/run/docker.sock:/var/run/docker.sock 
+      --net awx 
+      {{ gitlab_runner_image }}
+
+- name: Run GitLab Runner
+  ansible.builtin.command: "{{ runner_launch_command }}"
+
+- name: Get registration token
+  ansible.builtin.command:
+    "docker exec -it gitlab-container gitlab-rails runner 
+     -e production \"puts Gitlab::CurrentSettings.current_application_settings.runners_registration_token\""
+  register: registration_token
+
+- name: Register GitLab Runner
+  ansible.builtin.command: "docker exec -it gitlab-runner
+    gitlab-runner register --non-interactive
+    --url http://gitlab/
+    --registration-token {{ registration_token.stdout_lines[0] }}
+    --executor docker
+    --docker-image {{ gitlab_runner_container_image }}
+    --name {{ gitlab_runner_name }}"
+
+- name: Add extra_hosts to config.toml
+  ansible.builtin.lineinfile:
+    path: /etc/gitlab/runner/config.toml
+    line: "  extra_hosts = [\"gitlab:{{ ansible_wlan0.ipv4.address }}\"]"
+  become: true

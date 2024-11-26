@@ -1,0 +1,35 @@
+---
+- name: Setup Gitlab and AWX on Raspberry Pi
+  hosts: all
+  vars:
+    awx_source_path: ~/awx  # AWXリポジトリのクローン先ディレクトリ
+    awx_version: 24.6.1  # インストールするAWXのバージョン
+    awx_password_file: ~/awx_admin_password  # AWXのadminパスワードの保管先ファイル
+    gitlab_version: 17.5.1-ce.0  # インストールするGitLabのバージョン
+    gitlab_password_file: ~/gitlab_root_password  # GitLabのrootパスワードの保管先ファイル
+    gitlab_runner_image: gitlab/gitlab-runner:latest  # GitLab Runnerのコンテナイメージ
+    gitlab_runner_container_image: ghcr.io/ansible/community-ansible-dev-tools:latest  # Runner内で実行するコンテナイメージ
+    gitlab_runner_name: Arm-docker-runner  # Runnerの名前
+    restart_always: true  # ラズパイ起動時にすべてのコンテナを起動するか否か
+    setup_test_project: true  # GitLabとAWXにテストプロジェクト、ジョブテンプレートなどを登録するか否か
+    gitlab_personal_access_token: hQT6ms9MKAyEZtfag7yD  # GitLabのrootユーザー用パーソナルアクセストークン（任意の20文字）
+  tasks:
+    # - name: Include prepare tasks
+    #   ansible.builtin.include_tasks: prepare.yml
+
+    # - name: Include awx tasks
+    #   ansible.builtin.include_tasks: awx.yml
+
+    # - name: Include gitlab tasks
+    #   ansible.builtin.include_tasks: gitlab.yml
+
+    # - name: Include runner tasks
+    #   ansible.builtin.include_tasks: runner.yml
+
+    # - name: Include launch_script tasks
+    #   ansible.builtin.include_tasks: launch_script.yml
+
+    - name: Setup test project
+      ansible.builtin.include_tasks: test_project.yml
+      when:
+        - setup_test_project

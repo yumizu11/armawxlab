@@ -1,0 +1,78 @@
+# GitLab
+
+# If you want to build image, uncomment these three tasks and update 'Set fact - launch command' task with image name you built.
+# - name: Check if zengxs/gitlab-arm64 repository is already cloned or not
+#   ansible.builtin.stat:
+#     path: "{{ gitlabarm64_source_path }}"
+#   register: stat_result
+
+# - name: Clone zengxs/gitlab-arm64 repository
+#   ansible.builtin.git:
+#     repo: https://github.com/zengxs/gitlab-arm64.git
+#     dest: "{{ gitlabarm64_source_path }}"
+#   when:
+#     - stat_result.stat.exists == false
+
+# - name: Build GitLab-CE Arm64 container image
+#   ansible.builtin.command:
+#     cmd: "docker build . -t gitlab:{{ gitlab_version }} --build-arg RELEASE_PACKAGE=gitlab-ce --build-arg RELEASE_VERSION=\"{{ gitlab_version }}\""
+#     chdir: "{{ gitlabarm64_source_path }}"
+
+- name: Create directories for GitLab
+  ansible.builtin.file:
+    path: "{{ item }}"
+    mode: 0777
+    owner: "{{ lookup('ansible.builtin.env', 'USER') }}"
+    state: directory
+  loop:
+    - /etc/gitlab
+    - /etc/gitlab/logs
+    - /etc/gitlab/config
+    - /etc/gitlab/data
+  become: true
+
+- name: Set fact - launch command
+  ansible.builtin.set_fact:
+    gitlab_launch_command: >-
+      docker run
+      --detach
+      --hostname gitlab
+      --publish 8143:443
+      --publish 80:80
+      --publish 22222:22
+      --name gitlab-container
+      --restart {{ 'always' if restart_always else 'no' }}
+      --volume /etc/gitlab/config:/etc/gitlab:Z
+      --volume /etc/gitlab/logs:/var/log/gitlab:Z
+      --volume /etc/gitlab/data:/var/opt/gitlab:Z
+      --net awx
+      zengxs/gitlab:{{ gitlab_version }}
+
+- name: Run gitlab-ce container
+  ansible.builtin.command: "{{ gitlab_launch_command }}"
+
+- name: Retrieve root password
+  ansible.builtin.shell:
+    "grep 'Password:' /etc/gitlab/config/initial_root_password"
+  become: true
+  register: root_password
+  retries: 30
+  delay: 10
+  until: root_password.rc is defined and root_password.rc == 0
+
+- name: Set gitlab_root_password param
+  ansible.builtin.set_fact:
+    gitlab_root_password: "{{ (root_password.stdout.split(' '))[1] }}"
+
+- name: Create password file
+  ansible.builtin.copy:
+    dest: "{{ gitlab_password_file }}"
+    content: "{{ gitlab_root_password }}"
+
+- name: Wait for GitLab is ready
+  ansible.builtin.uri:
+    url: "http://localhost"
+  register: top_page
+  retries: 100
+  delay: 10
+  until: "'sign_in' in top_page.url"

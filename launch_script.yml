@@ -1,0 +1,11 @@
+---
+- name: Generate launch script
+  ansible.builtin.copy:
+    dest: ~/launch.sh
+    owner: "{{ ansible_user }}"
+    mode: 0766
+    content: |-
+      #!/bin/sh
+      {{ awx_launch_command }}
+      {{ gitlab_launch_command }}
+      {{ runner_launch_command }}

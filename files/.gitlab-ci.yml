@@ -1,0 +1,8 @@
+---
+stages:
+  - lint
+
+syntax-check:
+  stage: lint
+  script:
+    - ansible-lint

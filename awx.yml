@@ -1,0 +1,101 @@
+# AWX
+- name: Remove old AWX repository if exits
+  ansible.builtin.file:
+    path: "{{ awx_source_path }}"
+    state: absent
+
+- name: Clone AWX repository
+  ansible.builtin.git:
+    repo: https://github.com/ansible/awx.git
+    version: "{{ awx_version }}"
+    dest: "{{ awx_source_path }}"
+
+- name: Apply some changes if AWX version is 24.6.1
+  block:
+    - name: Update requirement_git.txt to use stable django-ansible-base
+      ansible.builtin.lineinfile:
+        path: "{{ awx_source_path }}/requirements/requirements_git.txt"
+        regex: '^django'
+        line: 'django-ansible-base @ git+https://github.com/ansible/django-ansible-base@2024.7.17#egg=django-ansible-base[rest_filters,jwt_consumer,resource_registry,rbac]'
+
+    - name: Update openssl version (1/2)
+      ansible.builtin.lineinfile:
+        path: "{{ awx_source_path }}/tools/ansible/roles/dockerfile/templates/Dockerfile.j2"
+        regex: 'openssl-3.0.7'
+        line: '    openssl-3.2.2 \'
+
+    - name: Update openssl version (2/2)
+      ansible.builtin.lineinfile:
+        path: "{{ awx_source_path }}/tools/ansible/roles/dockerfile/templates/Dockerfile.j2"
+        regex: 'openssl-3.0.7'
+        line: '    openssl-3.2.2 \'
+  when:
+    - awx_version == '24.6.1'
+
+- name: Run make docker-compose-build
+  ansible.builtin.command:
+    cmd: 'make docker-compose-build'
+    chdir: "{{ awx_source_path }}/"
+
+- name: Update Makefile not to launch AWX automatically
+  ansible.builtin.lineinfile:
+    path: "{{ awx_source_path }}/Makefile"
+    regex: '^\s*\$\(MAKE\) docker-compose-up'
+    line: '#	$(MAKE) docker-compose-up'
+
+- name: Run make docker-compose
+  ansible.builtin.command:
+    cmd: 'make docker-compose'
+    chdir: "{{ awx_source_path }}/"
+
+- name: Workaround for rsyslogd problem
+  ansible.builtin.command: "{{ item }}"
+  loop:
+    - ln -s /etc/apparmor.d/usr.sbin.rsyslogd /etc/apparmor.d/disable/
+    - apparmor_parser -R /etc/apparmor.d/usr.sbin.rsyslogd
+  become: true
+
+- name: Update docker-compose.yml to launch automatically
+  ansible.builtin.lineinfile:
+    path: "{{ awx_source_path }}/tools/docker-compose/_sources/docker-compose.yml"
+    insertafter: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+  loop:
+    - regexp: 'awx_1:$'
+      line: '    restart: always  # awx'
+    - regexp: 'redis_1:$'
+      line: '    restart: always  # redis'
+    - regexp: 'postgres:$'
+      line: '    restart: always  # postgres'
+  when:
+    - restart_always
+
+- name: Generate AWX launch command
+  ansible.builtin.set_fact:
+    awx_launch_command: 
+      "docker-compose -f {{ awx_source_path }}/tools/docker-compose/_sources/docker-compose.yml up -d"
+
+- name: Launch AWX
+  ansible.builtin.command:
+    cmd: "{{ awx_launch_command }}"
+    chdir: "{{ awx_source_path }}/"
+
+- name: Wait for AWX launched up and retrieve admin password from container log
+  ansible.builtin.shell:
+    "docker logs tools_awx_1 | grep 'Admin password:'"
+  register: admin_password
+  retries: 60
+  delay: 10
+  until: admin_password.rc == 0
+
+- name: Set admin_password param
+  ansible.builtin.set_fact:
+    awx_admin_password_from_log: "{{ (admin_password.stdout | split(' '))[2] }}"
+
+- name: Create password file
+  ansible.builtin.copy:
+    dest: "{{ awx_password_file }}"
+    content: "{{ awx_admin_password_from_log }}"
+
+- name: Build AWX UI in awx_1 container
+  ansible.builtin.command: "docker exec tools_awx_1 make clean-ui ui-devel"
