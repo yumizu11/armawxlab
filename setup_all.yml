@@ -14,20 +14,20 @@
     setup_test_project: true  # GitLabとAWXにテストプロジェクト、ジョブテンプレートなどを登録するか否か
     gitlab_personal_access_token: hQT6ms9MKAyEZtfag7yD  # GitLabのrootユーザー用パーソナルアクセストークン（任意の20文字）
   tasks:
-    # - name: Include prepare tasks
-    #   ansible.builtin.include_tasks: prepare.yml
+    - name: Include prepare tasks
+      ansible.builtin.include_tasks: prepare.yml
 
-    # - name: Include awx tasks
-    #   ansible.builtin.include_tasks: awx.yml
+    - name: Include awx tasks
+      ansible.builtin.include_tasks: awx.yml
 
-    # - name: Include gitlab tasks
-    #   ansible.builtin.include_tasks: gitlab.yml
+    - name: Include gitlab tasks
+      ansible.builtin.include_tasks: gitlab.yml
 
-    # - name: Include runner tasks
-    #   ansible.builtin.include_tasks: runner.yml
+    - name: Include runner tasks
+      ansible.builtin.include_tasks: runner.yml
 
-    # - name: Include launch_script tasks
-    #   ansible.builtin.include_tasks: launch_script.yml
+    - name: Include launch_script tasks
+      ansible.builtin.include_tasks: launch_script.yml
 
     - name: Setup test project
       ansible.builtin.include_tasks: test_project.yml
